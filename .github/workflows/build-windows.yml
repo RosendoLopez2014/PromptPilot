@@ -24,10 +24,28 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+        pip install pyinstaller
+        
+    - name: Verify installation
+      run: |
+        python --version
+        pip list | findstr PyQt6
+        pip list | findstr pyinstaller
         
     - name: Build executable
       run: |
-        pyinstaller --onefile --windowed --name PromptPilot --hidden-import PyQt6.QtCore --hidden-import PyQt6.QtGui --hidden-import PyQt6.QtWidgets --hidden-import speech_recognition --hidden-import pyaudio --collect-all PyQt6 --icon=NONE main.py
+        pyinstaller --onefile --windowed --name PromptPilot --hidden-import PyQt6.QtCore --hidden-import PyQt6.QtGui --hidden-import PyQt6.QtWidgets --hidden-import speech_recognition --hidden-import pyaudio --collect-all PyQt6 --icon=NONE --log-level=INFO main.py
+        
+    - name: Verify executable was created
+      run: |
+        if exist "dist\PromptPilot.exe" (
+          echo Executable found!
+          dir dist\PromptPilot.exe
+        ) else (
+          echo ERROR: Executable not found!
+          dir dist
+          exit 1
+        )
         
     - name: Create releases directory
       run: |
@@ -35,16 +53,33 @@ jobs:
         
     - name: Copy executable
       run: |
-        copy "dist\PromptPilot.exe" "releases\windows\PromptPilot-Windows.exe"
+        if exist "dist\PromptPilot.exe" (
+          copy "dist\PromptPilot.exe" "releases\windows\PromptPilot-Windows.exe"
+          echo Copy successful!
+          dir releases\windows\PromptPilot-Windows.exe
+        ) else (
+          echo ERROR: Cannot copy - executable does not exist
+          exit 1
+        )
         
     - name: Upload artifact
+      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: PromptPilot-Windows
         path: releases/windows/PromptPilot-Windows.exe
         
+    - name: Upload build logs (if failed)
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: Build-Logs
+        path: |
+          build/
+          dist/
+        
     - name: Commit and push (if on main branch)
-      if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+      if: success() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
