@@ -72,7 +72,29 @@ sudo dnf install portaudio-devel
 
 ### Step 3: Run the Application
 
+**Quick Start (Recommended for Testing):**
 ```bash
+# On macOS/Linux
+./run.sh
+
+# On Windows
+run.bat
+
+# Or directly with Python
+python main.py
+```
+
+**Or manually:**
+```bash
+# Activate virtual environment (optional but recommended)
+python3 -m venv venv
+source venv/bin/activate  # On macOS/Linux
+# OR: venv\Scripts\activate  # On Windows
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the app
 python main.py
 ```
 
