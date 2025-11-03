@@ -101,13 +101,43 @@ open https://github.com
 
 ## Building Executable
 
+### Windows
+
+**Option 1: Automated Build (Recommended)**
+- The Windows executable is automatically built via GitHub Actions on every push to `main`
+- Download the latest build from the [Actions](https://github.com/RosendoLopez2014/PromptPilot/actions) tab
+- Or check the `releases/windows/` folder after the build completes
+
+**Option 2: Manual Build on Windows**
+1. Install Python 3.10+ and dependencies:
+   ```cmd
+   pip install -r requirements.txt
+   pip install pyinstaller
+   ```
+2. Run the build script:
+   ```cmd
+   build-windows.bat
+   ```
+   Or with PowerShell:
+   ```powershell
+   .\build-windows.ps1
+   ```
+3. The executable will be at `releases/windows/PromptPilot-Windows.exe`
+
+**Option 3: Manual PyInstaller Command**
+```cmd
+pyinstaller --onefile --windowed --name PromptPilot --hidden-import PyQt6.QtCore --hidden-import PyQt6.QtGui --hidden-import PyQt6.QtWidgets --hidden-import speech_recognition --hidden-import pyaudio --collect-all PyQt6 main.py
+```
+
+### macOS
+
 To create a standalone executable:
 
 ```bash
-pyinstaller --onefile --windowed --name PromptPilot main.py
+python3 -m PyInstaller --onefile --windowed --name PromptPilot --hidden-import PyQt6.QtCore --hidden-import PyQt6.QtGui --hidden-import PyQt6.QtWidgets --hidden-import speech_recognition --hidden-import pyaudio --collect-all PyQt6 main.py
 ```
 
-The executable will be in the `dist/` directory.
+The executable will be in the `dist/` directory. Copy it to `releases/macos/` if you want to commit it.
 
 ### Cross-platform Build
 
