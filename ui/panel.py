@@ -2,8 +2,8 @@
 Expanded input panel UI component.
 """
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, 
-                             QPushButton, QLabel, QGraphicsDropShadowEffect)
-from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QRect, pyqtProperty, pyqtSignal
+                             QPushButton, QLabel, QGraphicsDropShadowEffect, QProgressBar)
+from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QRect, pyqtProperty, pyqtSignal, QTimer
 from PyQt6.QtGui import QPainter, QColor, QBrush, QPen, QPaintEvent, QFont, QKeyEvent
 
 
@@ -29,7 +29,7 @@ class InputPanel(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedSize(500, 300)
+        self.setFixedSize(400, 200)  # Smaller, more minimal
         self.setWindowFlags(
             Qt.WindowType.WindowStaysOnTopHint |
             Qt.WindowType.FramelessWindowHint |
@@ -43,34 +43,56 @@ class InputPanel(QWidget):
         
         # Layout
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(15)
+        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(10)
         
-        # Status label
+        # Status label with progress indicator
+        status_layout = QHBoxLayout()
         self.status_label = QLabel("Ready")
-        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.status_label.setStyleSheet("""
             color: #00D4FF;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 500;
             background: transparent;
-            padding: 5px;
+            padding: 3px;
         """)
-        layout.addWidget(self.status_label)
         
-        # Text input
+        # Progress indicator (hidden by default)
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setFixedHeight(4)
+        self.progress_bar.setMaximum(0)  # Indeterminate
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: none;
+                border-radius: 2px;
+                background-color: rgba(0, 212, 255, 0.1);
+            }
+            QProgressBar::chunk {
+                background-color: #00D4FF;
+                border-radius: 2px;
+            }
+        """)
+        self.progress_bar.hide()
+        
+        status_layout.addWidget(self.status_label)
+        status_layout.addWidget(self.progress_bar, stretch=1)
+        layout.addLayout(status_layout)
+        
+        # Text input (smaller)
         self.text_input = CommandTextEdit()
         self.text_input.setPlaceholderText("Type your prompt...")
+        self.text_input.setFixedHeight(60)  # Smaller height
         # Note: setMaximumBlockCount() is only available for QPlainTextEdit, not QTextEdit
         # Text length limitation removed - QTextEdit handles large text well
         self.text_input.setStyleSheet("""
             QTextEdit {
                 background-color: rgba(10, 10, 10, 0.9);
                 border: 2px solid rgba(0, 212, 255, 0.3);
-                border-radius: 10px;
-                padding: 12px;
+                border-radius: 8px;
+                padding: 8px;
                 color: #FFFFFF;
-                font-size: 14px;
+                font-size: 13px;
                 font-family: 'Inter', system-ui, -apple-system, sans-serif;
             }
             QTextEdit:focus {
@@ -80,13 +102,13 @@ class InputPanel(QWidget):
         self.text_input.enter_pressed.connect(self.send_requested)
         layout.addWidget(self.text_input)
         
-        # Button row
+        # Button row (compact)
         button_layout = QHBoxLayout()
-        button_layout.setSpacing(10)
+        button_layout.setSpacing(8)
         
-        # Mic button
+        # Mic button (smaller)
         self.mic_button = QPushButton("🎤")
-        self.mic_button.setFixedSize(50, 50)
+        self.mic_button.setFixedSize(40, 40)
         self.mic_button.setStyleSheet("""
             QPushButton {
                 background-color: rgba(10, 10, 10, 0.9);
@@ -105,17 +127,18 @@ class InputPanel(QWidget):
         """)
         button_layout.addWidget(self.mic_button)
         
-        # Send button
+        # Send button (smaller)
         self.send_button = QPushButton("Send")
+        self.send_button.setFixedHeight(40)
         self.send_button.setStyleSheet("""
             QPushButton {
                 background-color: #00D4FF;
                 border: none;
-                border-radius: 10px;
+                border-radius: 8px;
                 color: #0A0A0A;
-                font-size: 14px;
+                font-size: 13px;
                 font-weight: 600;
-                padding: 12px 30px;
+                padding: 8px 20px;
                 font-family: 'Inter', system-ui, -apple-system, sans-serif;
             }
             QPushButton:hover {
@@ -164,9 +187,17 @@ class InputPanel(QWidget):
         self.fade_anim.finished.connect(self.hide)
         self.fade_anim.start()
     
-    def setStatus(self, text: str):
-        """Update status label."""
+    def setStatus(self, text: str, show_progress: bool = False):
+        """Update status label with optional progress indicator."""
         self.status_label.setText(text)
+        if show_progress:
+            self.progress_bar.show()
+        else:
+            self.progress_bar.hide()
+    
+    def setStatusWithProgress(self, text: str, show_progress: bool):
+        """Wrapper method for thread-safe status updates with progress."""
+        self.setStatus(text, show_progress)
     
     def paintEvent(self, event: QPaintEvent):
         """Draw glassmorphism background."""

@@ -116,11 +116,11 @@ class PromptPilotApp(QObject):
         self.orb.move(orb_x, orb_y)
     
     def _position_panel(self):
-        """Position panel at center of screen."""
+        """Position panel on the right side of screen."""
         screen = self.app.primaryScreen()
         geometry = screen.geometry()
-        panel_x = (geometry.width() - self.panel.width()) // 2
-        panel_y = (geometry.height() - self.panel.height()) // 2
+        panel_x = geometry.width() - self.panel.width() - 30  # Right side with margin
+        panel_y = 50  # Top with margin
         self.panel.move(panel_x, panel_y)
         
         # Position overlay to cover entire screen
@@ -161,7 +161,8 @@ class PromptPilotApp(QObject):
         prompt = self.panel.text_input.toPlainText().strip()
         if prompt:
             self._execute_prompt(prompt)
-            self.panel.text_input.clear()
+            # Don't clear text - keep it visible
+            # self.panel.text_input.clear()
     
     def _on_mic_clicked(self):
         """Handle mic button click for voice input."""
@@ -207,7 +208,7 @@ class PromptPilotApp(QObject):
         
         # Parse prompt
         status_msg, params = self.parser.parse(prompt)
-        self.panel.setStatus(status_msg)
+        self.panel.setStatus(status_msg, show_progress=True)
         
         # Execute action in background thread
         action = params.get('action')
@@ -221,29 +222,31 @@ class PromptPilotApp(QObject):
             )
             thread.start()
         else:
-            # No action, just show status
-            QTimer.singleShot(2000, lambda: self.panel.setStatus("Ready"))
+            # No action, just show status (keep panel open)
+            self.panel.setStatus(status_msg, show_progress=False)
     
     def _run_action(self, action, args):
         """Run action in background thread."""
         try:
             if callable(action):
                 action(*args)
-            # Update status after completion
+            # Update status after completion (keep panel open)
             QMetaObject.invokeMethod(
                 self.panel,
-                "setStatus",
+                "setStatusWithProgress",
                 Qt.ConnectionType.QueuedConnection,
-                Q_ARG(str, "Done")
+                Q_ARG(str, "✓ Done"),
+                Q_ARG(bool, False)
             )
-            QTimer.singleShot(2000, lambda: self.panel.setStatus("Ready"))
+            # Panel stays open - no auto-close
         except Exception as e:
-            error_msg = f"Error: {str(e)[:30]}"
+            error_msg = f"✗ Error: {str(e)[:40]}"
             QMetaObject.invokeMethod(
                 self.panel,
-                "setStatus",
+                "setStatusWithProgress",
                 Qt.ConnectionType.QueuedConnection,
-                Q_ARG(str, error_msg)
+                Q_ARG(str, error_msg),
+                Q_ARG(bool, False)
             )
     
     def run(self):
