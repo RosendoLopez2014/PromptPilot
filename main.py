@@ -11,6 +11,7 @@ from ui.panel import InputPanel
 from core.automation import AutomationEngine
 from core.parser import CommandParser
 from core.voice import VoiceRecognizer
+from core.vision import VisionEngine
 
 
 class OverlayWidget(QWidget):
@@ -19,6 +20,7 @@ class OverlayWidget(QWidget):
     def __init__(self, app_instance, parent=None):
         super().__init__(parent)
         self.app_instance = app_instance
+        self.panel_widget = None  # Will be set after panel is created
         self.setWindowFlags(
             Qt.WindowType.WindowStaysOnTopHint |
             Qt.WindowType.FramelessWindowHint |
@@ -30,6 +32,15 @@ class OverlayWidget(QWidget):
     def mousePressEvent(self, event: QMouseEvent):
         """Close panel when clicking outside."""
         if event.button() == Qt.MouseButton.LeftButton:
+            # Check if click is actually on the panel
+            if self.panel_widget:
+                panel_rect = self.panel_widget.geometry()
+                click_pos = event.globalPosition().toPoint()
+                if panel_rect.contains(click_pos):
+                    # Click is on panel, don't close
+                    return
+            
+            # Click is outside panel, close it
             if self.app_instance and hasattr(self.app_instance, '_hide_panel'):
                 self.app_instance._hide_panel()
         super().mousePressEvent(event)
@@ -45,7 +56,8 @@ class PromptPilotApp(QObject):
         
         # Core components
         self.automation = AutomationEngine()
-        self.parser = CommandParser(self.automation)
+        self.vision = VisionEngine()
+        self.parser = CommandParser(self.automation, self.vision)
         self.voice = VoiceRecognizer()
         
         # UI components
@@ -54,6 +66,7 @@ class PromptPilotApp(QObject):
         
         # Overlay for click-outside detection
         self.overlay = OverlayWidget(self)
+        self.overlay.panel_widget = self.panel  # Link panel for click detection
         
         # Panel visibility
         self.panel_is_open = False
@@ -142,11 +155,13 @@ class PromptPilotApp(QObject):
     def _show_panel(self):
         """Show input panel."""
         self.panel_is_open = True
+        self.panel.showPanel()
+        self.panel.raise_()  # Bring panel to front
         self.overlay.show()
         self.overlay.lower()  # Behind panel
-        self.panel.showPanel()
-        self.panel.raise_()  # In front of overlay
-        QTimer.singleShot(100, lambda: self.panel.text_input.setFocus())
+        # Ensure panel stays on top
+        QTimer.singleShot(50, lambda: self.panel.raise_())
+        QTimer.singleShot(150, lambda: self.panel.text_input.setFocus())
     
     def _hide_panel(self):
         """Hide input panel."""
@@ -229,13 +244,21 @@ class PromptPilotApp(QObject):
         """Run action in background thread."""
         try:
             if callable(action):
-                action(*args)
+                result = action(*args)
+                # If action returns a string, use it as status message
+                if isinstance(result, str):
+                    status_msg = result
+                else:
+                    status_msg = "✓ Done"
+            else:
+                status_msg = "✓ Done"
+            
             # Update status after completion (keep panel open)
             QMetaObject.invokeMethod(
                 self.panel,
                 "setStatusWithProgress",
                 Qt.ConnectionType.QueuedConnection,
-                Q_ARG(str, "✓ Done"),
+                Q_ARG(str, status_msg),
                 Q_ARG(bool, False)
             )
             # Panel stays open - no auto-close

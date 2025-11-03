@@ -11,8 +11,9 @@ from core.automation import AutomationEngine
 class CommandParser:
     """Parses natural language prompts into executable commands."""
     
-    def __init__(self, automation: AutomationEngine):
+    def __init__(self, automation: AutomationEngine, vision=None):
         self.automation = automation
+        self.vision = vision
     
     def parse(self, prompt: str) -> Tuple[str, Dict]:
         """
@@ -20,6 +21,46 @@ class CommandParser:
         Returns: ('status_message', {'action': callable, 'args': ...})
         """
         prompt_lower = prompt.lower().strip()
+        
+        # Vision-based commands
+        if self.vision:
+            # "What's on my screen?" or "describe screen"
+            if re.search(r"(what'?s|what is|describe|show).*(on|my).*screen", prompt_lower):
+                return ("Analyzing screen...", {
+                    'action': self._describe_screen,
+                    'args': ()
+                })
+            
+            # "Find [text]" or "click [button name]"
+            if re.search(r'(find|click|locate)\s+["\']?([^"\']+)["\']?', prompt_lower):
+                match = re.search(r'(find|click|locate)\s+["\']?([^"\']+)["\']?', prompt_lower)
+                action_type = match.group(1)
+                target = match.group(2).strip()
+                
+                if action_type == 'click':
+                    return (f"Finding and clicking '{target}'...", {
+                        'action': self._find_and_click,
+                        'args': (target,)
+                    })
+                else:
+                    return (f"Searching for '{target}'...", {
+                        'action': self._find_on_screen,
+                        'args': (target,)
+                    })
+            
+            # "Read text on screen" or "what text is visible?"
+            if re.search(r'(read|what).*text.*(on|screen|visible)', prompt_lower):
+                return ("Reading text on screen...", {
+                    'action': self._read_screen_text,
+                    'args': ()
+                })
+            
+            # "Answer question about screen"
+            if re.search(r'(answer|tell me|what|where|how many).*(about|on|screen)', prompt_lower):
+                return ("Analyzing screen to answer question...", {
+                    'action': self._answer_question,
+                    'args': (prompt,)
+                })
         
         # Google Sheets creation
         if re.search(r'(make|create|new).*google.*sheet', prompt_lower):
@@ -182,4 +223,55 @@ class CommandParser:
         if query:
             # Search in Spotify
             self.automation.search_in_app(query)
+    
+    # Vision-based methods
+    def _describe_screen(self):
+        """Get description of what's on screen."""
+        if not self.vision:
+            return "Vision engine not available"
+        analysis = self.vision.analyze_screen()
+        return f"Screen: {analysis.get('description', 'Analysis complete')}"
+    
+    def _find_and_click(self, target: str):
+        """Find text/image on screen and click it."""
+        if not self.vision:
+            return "Vision engine not available"
+        
+        # Try to find text first
+        positions = self.vision.find_text_on_screen(target)
+        if positions:
+            # Click first occurrence
+            x, y = positions[0]
+            self.automation.click(x, y)
+            return f"✓ Clicked '{target}' at ({x}, {y})"
+        else:
+            return f"✗ Could not find '{target}' on screen"
+    
+    def _find_on_screen(self, target: str):
+        """Find something on screen and report location."""
+        if not self.vision:
+            return "Vision engine not available"
+        
+        positions = self.vision.find_text_on_screen(target)
+        if positions:
+            locations = ", ".join([f"#{i+1} at ({x},{y})" for i, (x, y) in enumerate(positions[:3])])
+            return f"Found '{target}': {locations}"
+        else:
+            return f"'{target}' not found on screen"
+    
+    def _read_screen_text(self):
+        """Read all text visible on screen."""
+        if not self.vision:
+            return "Vision engine not available"
+        
+        answer = self.vision.answer_question_about_screen("what text is on screen")
+        return answer
+    
+    def _answer_question(self, question: str):
+        """Answer a question about what's on screen."""
+        if not self.vision:
+            return "Vision engine not available"
+        
+        answer = self.vision.answer_question_about_screen(question)
+        return f"Answer: {answer}"
 
