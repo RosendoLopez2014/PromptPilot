@@ -29,38 +29,43 @@ jobs:
     - name: Verify installation
       run: |
         python --version
-        pip list | findstr PyQt6
-        pip list | findstr pyinstaller
+        pip list | Select-String PyQt6
+        pip list | Select-String pyinstaller
         
     - name: Build executable
       run: |
         pyinstaller --onefile --windowed --name PromptPilot --hidden-import PyQt6.QtCore --hidden-import PyQt6.QtGui --hidden-import PyQt6.QtWidgets --hidden-import speech_recognition --hidden-import pyaudio --collect-all PyQt6 --icon=NONE --log-level=INFO main.py
         
     - name: Verify executable was created
+      shell: pwsh
       run: |
-        if exist "dist\PromptPilot.exe" (
-          echo Executable found!
-          dir dist\PromptPilot.exe
-        ) else (
-          echo ERROR: Executable not found!
-          dir dist
+        if (Test-Path "dist\PromptPilot.exe") {
+          Write-Host "Executable found!"
+          Get-ChildItem "dist\PromptPilot.exe"
+        } else {
+          Write-Host "ERROR: Executable not found!"
+          Get-ChildItem "dist"
           exit 1
-        )
+        }
         
     - name: Create releases directory
+      shell: pwsh
       run: |
-        if not exist "releases\windows" mkdir "releases\windows"
+        if (-not (Test-Path "releases\windows")) {
+          New-Item -ItemType Directory -Path "releases\windows" -Force | Out-Null
+        }
         
     - name: Copy executable
+      shell: pwsh
       run: |
-        if exist "dist\PromptPilot.exe" (
-          copy "dist\PromptPilot.exe" "releases\windows\PromptPilot-Windows.exe"
-          echo Copy successful!
-          dir releases\windows\PromptPilot-Windows.exe
-        ) else (
-          echo ERROR: Cannot copy - executable does not exist
+        if (Test-Path "dist\PromptPilot.exe") {
+          Copy-Item "dist\PromptPilot.exe" -Destination "releases\windows\PromptPilot-Windows.exe"
+          Write-Host "Copy successful!"
+          Get-ChildItem "releases\windows\PromptPilot-Windows.exe"
+        } else {
+          Write-Host "ERROR: Cannot copy - executable does not exist"
           exit 1
-        )
+        }
         
     - name: Upload artifact
       if: always()
@@ -80,9 +85,14 @@ jobs:
         
     - name: Commit and push (if on main branch)
       if: success() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+      shell: pwsh
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
         git add releases/windows/
-        git diff --staged --quiet || (git commit -m "Build Windows executable [skip ci]" && git push)
+        $diff = git diff --staged --quiet
+        if ($LASTEXITCODE -ne 0) {
+          git commit -m "Build Windows executable [skip ci]"
+          git push
+        }
