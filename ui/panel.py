@@ -61,7 +61,8 @@ class InputPanel(QWidget):
         # Text input
         self.text_input = CommandTextEdit()
         self.text_input.setPlaceholderText("Type your prompt...")
-        self.text_input.setMaximumBlockCount(1000)  # Limit text length
+        # Note: setMaximumBlockCount() is only available for QPlainTextEdit, not QTextEdit
+        # Text length limitation removed - QTextEdit handles large text well
         self.text_input.setStyleSheet("""
             QTextEdit {
                 background-color: rgba(10, 10, 10, 0.9);
