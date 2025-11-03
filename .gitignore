@@ -39,6 +39,9 @@ Thumbs.db
 
 # PyInstaller
 *.spec
+# Allow releases folder (executables)
+!releases/
+!releases/**
 
 # Screenshots (if saved in project)
 screenshots/
