@@ -4,7 +4,7 @@ PromptPilot - Desktop automation assistant with floating orb UI.
 import sys
 import threading
 from PyQt6.QtWidgets import QApplication, QWidget
-from PyQt6.QtCore import Qt, QTimer, QPoint, QMetaObject, Q_ARG
+from PyQt6.QtCore import Qt, QTimer, QPoint, QMetaObject, Q_ARG, QObject
 from PyQt6.QtGui import QScreen, QKeyEvent, QMouseEvent
 from ui.orb import FloatingOrb
 from ui.panel import InputPanel
@@ -35,10 +35,11 @@ class OverlayWidget(QWidget):
         super().mousePressEvent(event)
 
 
-class PromptPilotApp:
+class PromptPilotApp(QObject):
     """Main application class."""
     
     def __init__(self):
+        super().__init__()
         self.app = QApplication(sys.argv)
         self.app.setQuitOnLastWindowClosed(False)
         

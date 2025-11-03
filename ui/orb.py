@@ -2,7 +2,7 @@
 Floating orb UI component with glassmorphism design.
 """
 from PyQt6.QtWidgets import QWidget
-from PyQt6.QtCore import Qt, QPoint, QPropertyAnimation, QEasingCurve, pyqtProperty
+from PyQt6.QtCore import Qt, QPoint, QRect, QPropertyAnimation, QEasingCurve, pyqtProperty
 from PyQt6.QtGui import QPainter, QColor, QBrush, QPen, QPaintEvent, QMouseEvent
 
 
@@ -72,14 +72,19 @@ class FloatingOrb(QWidget):
         
         # Main orb (dark with blur effect)
         orb_radius = 20 * self._scale
-        orb_rect = self.rect().center()
-        orb_rect.translate(-int(orb_radius), -int(orb_radius))
+        center_point = self.rect().center()
+        orb_rect = QRect(
+            int(center_point.x() - orb_radius),
+            int(center_point.y() - orb_radius),
+            int(orb_radius * 2),
+            int(orb_radius * 2)
+        )
         
         # Dark background with transparency
         gradient = QColor(10, 10, 10, 220)
         painter.setBrush(QBrush(gradient))
         painter.setPen(QPen(QColor(0, 212, 255, 150), 2))
-        painter.drawEllipse(orb_rect.x(), orb_rect.y(), int(orb_radius * 2), int(orb_radius * 2))
+        painter.drawEllipse(orb_rect)
         
         # Inner highlight
         highlight_radius = 8 * self._scale
