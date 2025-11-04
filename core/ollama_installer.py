@@ -38,26 +38,81 @@ class OllamaInstaller:
             return False
     
     def download_installer(self) -> Optional[str]:
-        """Download Ollama installer to temp directory."""
+        """Download Ollama installer to a location with proper permissions."""
         if not self.is_windows:
             return None
         
         try:
             print("Downloading Ollama installer...")
-            installer_path = os.path.join(self.temp_dir, "OllamaSetup.exe")
             
-            # Download the installer
-            urllib.request.urlretrieve(self.OLLAMA_INSTALLER_URL, installer_path)
+            # Use user's local AppData/Temp instead of system temp for better permissions
+            localappdata = os.environ.get('LOCALAPPDATA', self.temp_dir)
+            download_dir = os.path.join(localappdata, 'Temp')
+            os.makedirs(download_dir, exist_ok=True)
             
+            installer_path = os.path.join(download_dir, "OllamaSetup.exe")
+            
+            # Remove old installer if it exists
             if os.path.exists(installer_path):
-                self.installer_path = installer_path
-                print(f"Downloaded installer to: {installer_path}")
-                return installer_path
+                try:
+                    os.remove(installer_path)
+                except:
+                    pass  # Ignore if can't remove
+            
+            # Download with progress and verification
+            def report_hook(blocknum, blocksize, totalsize):
+                if totalsize > 0:
+                    percent = min(100, (blocknum * blocksize * 100) // totalsize)
+                    if blocknum % 10 == 0:  # Print every 10 blocks
+                        print(f"Downloading... {percent}%")
+            
+            print("Downloading from GitHub releases...")
+            urllib.request.urlretrieve(
+                self.OLLAMA_INSTALLER_URL, 
+                installer_path,
+                reporthook=report_hook
+            )
+            
+            # Verify download completed
+            if not os.path.exists(installer_path):
+                print("ERROR: Installer file not found after download")
+                return None
+            
+            # Check file size (should be at least 40MB)
+            file_size = os.path.getsize(installer_path)
+            if file_size < 40 * 1024 * 1024:  # Less than 40MB is suspicious
+                print(f"WARNING: Downloaded file seems too small ({file_size} bytes)")
+                # Continue anyway, might be a newer smaller version
+            
+            print(f"Download complete: {file_size / (1024*1024):.1f} MB")
+            print(f"Installer saved to: {installer_path}")
+            
+            # Unblock the file if Windows marked it as unsafe (common for downloads)
+            # Windows adds a Zone.Identifier that can prevent execution
+            try:
+                # Use PowerShell to unblock the file
+                unblock_cmd = f'powershell -Command "Unblock-File -Path \'{installer_path}\' -ErrorAction SilentlyContinue"'
+                unblock_result = subprocess.run(
+                    unblock_cmd,
+                    shell=True,
+                    capture_output=True,
+                    timeout=10,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                )
+                if unblock_result.returncode == 0:
+                    print("Unblocked installer file (removed Windows download security flag)")
+            except Exception as e:
+                # If unblocking fails, continue anyway - installer might still work
+                pass
+            
+            self.installer_path = installer_path
+            return installer_path
+            
         except Exception as e:
             print(f"Error downloading Ollama installer: {e}")
+            import traceback
+            traceback.print_exc()
             return None
-        
-        return None
     
     def install_ollama(self, installer_path: Optional[str] = None) -> bool:
         """
@@ -78,16 +133,63 @@ class OllamaInstaller:
                 return False
         
         try:
+            # Verify file is accessible and not locked
+            if not os.path.exists(installer_path):
+                print(f"ERROR: Installer file not found: {installer_path}")
+                return False
+            
+            # Get absolute path to avoid path issues
+            installer_path = os.path.abspath(installer_path)
+            
+            # Verify file is readable
+            try:
+                with open(installer_path, 'rb') as f:
+                    f.read(1)  # Read first byte to verify file is accessible
+            except Exception as e:
+                print(f"ERROR: Cannot read installer file: {e}")
+                return False
+            
             print("Installing Ollama... This may require administrator privileges.")
             print("If a UAC prompt appears, please click 'Yes' to allow installation.")
+            print(f"Running installer from: {installer_path}")
             
-            # Run installer silently (/S = silent install)
-            # Note: This may still trigger UAC if user doesn't have admin rights
+            # Change to the directory containing the installer
+            installer_dir = os.path.dirname(installer_path)
+            installer_name = os.path.basename(installer_path)
+            
+            # Try silent install first
+            # Note: Ollama installer uses /S for silent install (NSIS installer)
+            print("Attempting silent installation...")
             result = subprocess.run(
                 [installer_path, "/S"],
-                timeout=120,  # 2 minute timeout
+                timeout=180,  # 3 minute timeout (installer can be slow)
+                cwd=installer_dir,  # Run from installer directory
+                capture_output=True,  # Capture output for debugging
+                text=True,
                 creationflags=subprocess.CREATE_NO_WINDOW
             )
+            
+            # If silent install failed, provide helpful error message
+            if result.returncode != 0:
+                print(f"Silent installation returned code: {result.returncode}")
+                if result.stdout:
+                    print(f"Installer output: {result.stdout}")
+                if result.stderr:
+                    print(f"Installer errors: {result.stderr}")
+                
+                # Check for common error messages
+                error_output = (result.stdout or "") + (result.stderr or "")
+                if "cannot read" in error_output.lower() or "source file" in error_output.lower():
+                    print("\nERROR: Installer cannot read source file.")
+                    print("This might be due to:")
+                    print("  1. Antivirus blocking the installer")
+                    print("  2. File permissions issue")
+                    print("  3. Installer file is corrupted")
+                    print("\nTry:")
+                    print("  1. Temporarily disable antivirus")
+                    print("  2. Run the app as administrator")
+                    print("  3. Download and install Ollama manually from: https://ollama.com/download")
+                    return False
             
             if result.returncode == 0:
                 # Wait for installation to complete and service to start
