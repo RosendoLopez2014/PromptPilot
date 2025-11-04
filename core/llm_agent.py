@@ -6,14 +6,18 @@ import time
 from typing import Dict, List, Optional, Any
 import subprocess
 import sys
+import platform
+from core.ollama_installer import OllamaInstaller
 
 
 class LLMAgent:
     """Intelligent automation agent powered by local LLM (Ollama)."""
     
-    def __init__(self, model: str = "llama3.2:3b"):
+    def __init__(self, model: str = "llama3.2:3b", auto_install: bool = True):
         self.model = model
-        self.ollama_available = self._check_ollama()
+        self.auto_install = auto_install
+        self.installer = OllamaInstaller() if platform.system() == "Windows" else None
+        self.ollama_available = self._ensure_ollama()
         self.conversation_history = []
     
     def _check_ollama(self) -> bool:
@@ -22,11 +26,41 @@ class LLMAgent:
             result = subprocess.run(
                 ["ollama", "list"],
                 capture_output=True,
-                timeout=5
+                timeout=5,
+                creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
             )
             return result.returncode == 0
         except (subprocess.TimeoutExpired, FileNotFoundError):
             return False
+    
+    def _ensure_ollama(self) -> bool:
+        """Check if Ollama is installed, and install it automatically if on Windows."""
+        # First check if already installed
+        if self._check_ollama():
+            # If Ollama is available, also ensure the model is downloaded
+            self.ensure_model_available()
+            return True
+        
+        # Try to install automatically if on Windows and auto_install is enabled
+        if self.auto_install and self.installer:
+            print("Ollama not found. Attempting automatic installation...")
+            print("This may take a minute. Please wait...")
+            if self.installer.ensure_ollama_installed(auto_install=True):
+                # Wait a bit more for service to fully start
+                import time
+                time.sleep(2)
+                # Re-check after installation
+                if self._check_ollama():
+                    # If installation successful, ensure model is available
+                    self.ensure_model_available()
+                    return True
+        
+        if platform.system() == "Windows":
+            print("Ollama installation failed or is not available.")
+            print("You can install Ollama manually from: https://ollama.com/download")
+            print("Or restart this application to retry automatic installation.")
+        
+        return False
     
     def _call_ollama(self, prompt: str) -> Optional[str]:
         """Call Ollama API and return response."""
@@ -38,7 +72,8 @@ class LLMAgent:
                 ["ollama", "run", self.model, prompt],
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=30,
+                creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
             )
             if result.returncode == 0:
                 return result.stdout.strip()
@@ -123,6 +158,40 @@ Generate a step-by-step plan as JSON array:"""
                 pass
         
         return []
+    
+    def ensure_model_available(self) -> bool:
+        """Ensure the required model is downloaded."""
+        if not self.ollama_available:
+            return False
+        
+        try:
+            # Check if model is available
+            result = subprocess.run(
+                ["ollama", "list"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
+            )
+            
+            if result.returncode == 0 and self.model in result.stdout:
+                return True
+            
+            # Model not found, try to pull it
+            print(f"Model {self.model} not found. Downloading...")
+            pull_result = subprocess.run(
+                ["ollama", "pull", self.model],
+                capture_output=True,
+                text=True,
+                timeout=300,  # 5 minute timeout for model download
+                creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
+            )
+            
+            return pull_result.returncode == 0
+            
+        except Exception as e:
+            print(f"Error ensuring model availability: {e}")
+            return False
     
     def is_available(self) -> bool:
         """Check if LLM agent is available."""

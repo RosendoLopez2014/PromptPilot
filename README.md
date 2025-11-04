@@ -206,6 +206,19 @@ PromptPilot/
 - Some apps may block automation - try different approaches
 - Check that `pyautogui` can control your system
 
+### Ollama Installation Issues (Windows)
+
+- **UAC Prompt**: If you see a UAC prompt, click "Yes" to allow installation
+- **Installation Failed**: 
+  - Check your internet connection
+  - Ensure you have admin rights or can approve UAC prompts
+  - Install Ollama manually from [ollama.com/download](https://ollama.com/download)
+  - Restart the app after manual installation
+- **Model Download Failed**:
+  - Check your internet connection (model download is ~2GB)
+  - Ensure you have enough disk space
+  - You can download models manually: `ollama pull llama3.2:3b`
+
 ## Customization
 
 ### Changing Colors

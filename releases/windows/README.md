@@ -43,6 +43,24 @@ If you want to build the Windows executable on your Windows machine:
 - Windows 10/11 (64-bit)
 - No Python installation required (all dependencies bundled)
 
+## Automatic Ollama Installation
+
+**On first run**, if Ollama is not already installed on your system:
+
+1. The app will automatically download the Ollama installer (~50MB)
+2. Run the installer silently in the background
+3. You may see a Windows UAC (User Account Control) prompt - click **"Yes"** to allow installation
+4. Wait 1-2 minutes for installation to complete
+5. The default LLM model (`llama3.2:3b`) will be downloaded automatically (~2GB)
+
+**Note**: 
+- Installation requires internet connection
+- Admin privileges may be required (UAC prompt)
+- If installation fails, you can install Ollama manually from [ollama.com/download](https://ollama.com/download)
+- After installation, restart the app if needed
+
+Once installed, Ollama will be available for all users and will persist across app restarts.
+
 ## Troubleshooting
 
 ### Windows Defender / Antivirus Warning
