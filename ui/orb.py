@@ -47,16 +47,28 @@ class FloatingOrb(QWidget):
         if event.button() == Qt.MouseButton.LeftButton:
             self.is_dragging = True
             self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            # Visual feedback: slightly increase scale when dragging starts
+            self.pulse_anim.pause()
             event.accept()
+        elif event.button() == Qt.MouseButton.RightButton:
+            # Right-click will be handled by parent
+            event.ignore()
     
     def mouseMoveEvent(self, event: QMouseEvent):
         if self.is_dragging and event.buttons() == Qt.MouseButton.LeftButton:
-            self.move(event.globalPosition().toPoint() - self.drag_position)
+            new_pos = event.globalPosition().toPoint() - self.drag_position
+            # Keep orb within screen bounds
+            screen = self.screen().geometry()
+            new_pos.setX(max(0, min(new_pos.x(), screen.width() - self.width())))
+            new_pos.setY(max(0, min(new_pos.y(), screen.height() - self.height())))
+            self.move(new_pos)
             event.accept()
     
     def mouseReleaseEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
             self.is_dragging = False
+            # Resume pulse animation
+            self.pulse_anim.resume()
             event.accept()
     
     def paintEvent(self, event: QPaintEvent):

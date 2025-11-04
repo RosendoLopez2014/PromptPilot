@@ -3,16 +3,23 @@ PromptPilot - Desktop automation assistant with floating orb UI.
 """
 import sys
 import threading
-from PyQt6.QtWidgets import QApplication, QWidget
+from PyQt6.QtWidgets import QApplication, QWidget, QMenu
 from PyQt6.QtCore import Qt, QTimer, QPoint, QMetaObject, Q_ARG, QObject
 from PyQt6.QtGui import QScreen, QKeyEvent, QMouseEvent
 from ui.orb import FloatingOrb
 from ui.panel import InputPanel
 from ui.click_highlight import ClickHighlight
+from ui.install_dialog import InstallDialog
+from ui.settings_dialog import SettingsDialog
 from core.automation import AutomationEngine
 from core.parser import CommandParser
 from core.voice import VoiceRecognizer
 from core.vision import VisionEngine
+from core.llm_agent import LLMAgent
+from core.ollama_installer import OllamaInstaller
+import platform
+import json
+from pathlib import Path
 
 
 class OverlayWidget(QWidget):
@@ -64,7 +71,16 @@ class PromptPilotApp(QObject):
         
         # Automation with click callback
         self.automation = AutomationEngine(click_callback=self._on_automation_click)
+        
+        # Load settings before creating parser (to get Ollama model preference)
+        temp_settings = self._load_settings()
+        auto_install = temp_settings.get("ollama_auto_install", False)  # Disable auto-install, use UI instead
+        
+        # Parser with LLM agent (will check Ollama availability but not auto-install)
         self.parser = CommandParser(self.automation, self.vision)
+        if self.parser.llm_agent:
+            self.parser.llm_agent.auto_install = False  # Disable auto-install, use UI dialog instead
+        
         self.voice = VoiceRecognizer()
         
         # UI components
@@ -78,18 +94,26 @@ class PromptPilotApp(QObject):
         # Panel visibility
         self.panel_is_open = False
         
+        # Settings
+        self.settings = self._load_settings()
+        self.ollama_installer = OllamaInstaller() if platform.system() == "Windows" else None
+        
         # Store original orb mousePressEvent
         self.orb_original_press = self.orb.mousePressEvent
         
         # Setup UI
         self._setup_ui()
         self._setup_connections()
+        self._apply_settings()
         
         # Position orb at bottom-right
         self._position_orb()
         
         # Position panel at center
         self._position_panel()
+        
+        # Check for Ollama and show install dialog if needed
+        QTimer.singleShot(1000, self._check_ollama_on_startup)
     
     def _setup_ui(self):
         """Setup UI components."""
@@ -119,6 +143,18 @@ class PromptPilotApp(QObject):
         # Orb click -> show panel (override mousePressEvent)
         self.orb.mousePressEvent = self._on_orb_clicked
         
+        # Track orb drag state to detect clicks vs drags
+        original_release = self.orb.mouseReleaseEvent
+        def orb_release_with_click_detection(event):
+            original_release(event)
+            # If it was a click (not a drag), toggle panel
+            if event.button() == Qt.MouseButton.LeftButton and not self.orb.is_dragging:
+                if self.panel_is_open:
+                    self._hide_panel()
+                else:
+                    self._show_panel()
+        self.orb.mouseReleaseEvent = orb_release_with_click_detection
+        
         # Panel buttons
         self.panel.send_button.clicked.connect(self._on_send_clicked)
         self.panel.mic_button.clicked.connect(self._on_mic_clicked)
@@ -126,6 +162,139 @@ class PromptPilotApp(QObject):
         
         # Voice recognition callback
         self.voice.callback = self._on_voice_result
+    
+    def _load_settings(self):
+        """Load settings from file."""
+        settings_file = Path.home() / ".promptpilot" / "settings.json"
+        default = {
+            "ollama_model": "llama3.2:3b",
+            "ollama_auto_install": True,
+            "ollama_location": "",
+            "orb_opacity": 100,
+            "orb_size": 50,
+            "panel_opacity": 98,
+            "click_highlight_duration": 600,
+        }
+        
+        if settings_file.exists():
+            try:
+                with open(settings_file, 'r') as f:
+                    loaded = json.load(f)
+                    default.update(loaded)
+            except:
+                pass
+        
+        return default
+    
+    def _apply_settings(self):
+        """Apply loaded settings to UI."""
+        # Orb size
+        orb_size = self.settings.get("orb_size", 50)
+        self.orb.setFixedSize(orb_size, orb_size)
+        
+        # Orb opacity
+        orb_opacity = self.settings.get("orb_opacity", 100) / 100.0
+        self.orb.setWindowOpacity(orb_opacity)
+        
+        # Panel opacity
+        panel_opacity = self.settings.get("panel_opacity", 98) / 100.0
+        self.panel.setWindowOpacity(panel_opacity)
+        
+        # Click highlight duration
+        duration = self.settings.get("click_highlight_duration", 600)
+        self.click_highlight.fade_anim.setDuration(duration)
+        self.click_highlight.scale_anim.setDuration(duration)
+        
+        # Update LLM agent model if parser has one
+        if hasattr(self.parser, 'llm_agent') and self.parser.llm_agent:
+            self.parser.llm_agent.model = self.settings.get("ollama_model", "llama3.2:3b")
+    
+    def _check_ollama_on_startup(self):
+        """Check if Ollama is installed on startup and show install dialog if needed."""
+        if not platform.system() == "Windows":
+            return
+        
+        # Check if Ollama is installed
+        if self.ollama_installer and not self.ollama_installer.is_ollama_installed():
+            # Check if auto-install is enabled
+            if self.settings.get("ollama_auto_install", True):
+                self._show_install_dialog()
+    
+    def _show_install_dialog(self):
+        """Show Ollama installation dialog."""
+        dialog = InstallDialog(self.orb)
+        
+        # Download installer first
+        if self.ollama_installer:
+            dialog.status_log.append("Downloading Ollama installer...")
+            installer_path = self.ollama_installer.download_installer()
+            if installer_path:
+                dialog.set_installer_path(installer_path)
+                dialog.status_log.append("Installer downloaded successfully!")
+            else:
+                dialog.status_log.append("Failed to download installer. Please install manually.")
+                QTimer.singleShot(2000, dialog.close)
+                return
+        
+        # Show dialog
+        if dialog.exec() == dialog.DialogCode.Accepted:
+            # Installation successful, refresh LLM agent
+            if hasattr(self.parser, 'llm_agent'):
+                self.parser.llm_agent.ollama_available = self.ollama_installer.is_ollama_installed()
+                if self.parser.llm_agent.ollama_available:
+                    self.parser.llm_agent.ensure_model_available()
+    
+    def _show_settings(self):
+        """Show settings dialog."""
+        dialog = SettingsDialog(self.orb)
+        dialog.settings_changed.connect(self._on_settings_changed)
+        
+        if dialog.exec() == dialog.DialogCode.Accepted:
+            # Settings saved, reload and apply
+            self.settings = dialog.get_settings()
+            self._apply_settings()
+    
+    def _on_settings_changed(self):
+        """Handle settings changed signal."""
+        # Reload settings
+        self.settings = self._load_settings()
+        self._apply_settings()
+    
+    def _show_orb_context_menu(self, position):
+        """Show context menu when right-clicking orb."""
+        menu = QMenu(self.orb)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #1a1a1a;
+                color: #ffffff;
+                border: 1px solid #3a3a3a;
+                border-radius: 6px;
+                padding: 5px;
+            }
+            QMenu::item {
+                padding: 8px 20px;
+                border-radius: 4px;
+            }
+            QMenu::item:selected {
+                background-color: #00D4FF;
+                color: #0a0a0a;
+            }
+        """)
+        
+        settings_action = menu.addAction("⚙️ Settings")
+        menu.addSeparator()
+        install_action = menu.addAction("📥 Install Ollama") if platform.system() == "Windows" else None
+        menu.addSeparator()
+        quit_action = menu.addAction("❌ Quit")
+        
+        action = menu.exec(self.orb.mapToGlobal(position))
+        
+        if action == settings_action:
+            self._show_settings()
+        elif action == install_action and install_action:
+            self._show_install_dialog()
+        elif action == quit_action:
+            self.app.quit()
     
     def eventFilter(self, obj, event):
         """Filter events for ESC key."""
@@ -159,15 +328,14 @@ class PromptPilotApp(QObject):
         self.overlay.lower()  # Put behind panel
     
     def _on_orb_clicked(self, event):
-        """Handle orb click to toggle panel."""
-        if event.button() == Qt.MouseButton.LeftButton:
-            if not self.panel_is_open:
-                self._show_panel()
-            else:
-                self._hide_panel()
+        """Handle orb click - left click opens panel, right click shows menu."""
+        if event.button() == Qt.MouseButton.RightButton:
+            # Right-click: show context menu
+            self._show_orb_context_menu(event.position().toPoint())
             event.accept()
-        else:
-            # Call original for dragging
+            return
+        elif event.button() == Qt.MouseButton.LeftButton:
+            # Left-click: start dragging (panel toggle handled separately on release if not dragged)
             self.orb_original_press(event)
     
     def _show_panel(self):
