@@ -8,6 +8,7 @@ from PyQt6.QtCore import Qt, QTimer, QPoint, QMetaObject, Q_ARG, QObject
 from PyQt6.QtGui import QScreen, QKeyEvent, QMouseEvent
 from ui.orb import FloatingOrb
 from ui.panel import InputPanel
+from ui.click_highlight import ClickHighlight
 from core.automation import AutomationEngine
 from core.parser import CommandParser
 from core.voice import VoiceRecognizer
@@ -55,8 +56,14 @@ class PromptPilotApp(QObject):
         self.app.setQuitOnLastWindowClosed(False)
         
         # Core components
-        self.automation = AutomationEngine()
         self.vision = VisionEngine()
+        
+        # Click highlight overlay
+        self.click_highlight = ClickHighlight()
+        self.click_highlight.hide()
+        
+        # Automation with click callback
+        self.automation = AutomationEngine(click_callback=self._on_automation_click)
         self.parser = CommandParser(self.automation, self.vision)
         self.voice = VoiceRecognizer()
         
@@ -93,8 +100,19 @@ class PromptPilotApp(QObject):
         self.panel.hide()
         self.overlay.hide()
         
+        # Click highlight initially hidden
+        screen = self.app.primaryScreen()
+        geometry = screen.geometry()
+        self.click_highlight.setGeometry(geometry)
+        self.click_highlight.hide()
+        
         # Install event filter on panel for ESC key
         self.panel.installEventFilter(self)
+    
+    def _on_automation_click(self, x: int, y: int, bbox: tuple = None):
+        """Callback when automation engine performs a click."""
+        # Show click highlight
+        self.click_highlight.show_click(x, y, bbox)
     
     def _setup_connections(self):
         """Setup signal/slot connections."""

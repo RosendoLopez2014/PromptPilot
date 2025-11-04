@@ -14,10 +14,11 @@ from pathlib import Path
 class AutomationEngine:
     """Handles all automation tasks."""
     
-    def __init__(self):
+    def __init__(self, click_callback=None):
         pyautogui.FAILSAFE = True
         pyautogui.PAUSE = 0.1
         self.system = platform.system()
+        self.click_callback = click_callback  # Callback for click highlights
     
     def open_url(self, url: str):
         """Open URL in default browser."""
@@ -93,9 +94,16 @@ class AutomationEngine:
         """Press a key."""
         pyautogui.press(key)
     
-    def click(self, x: int = None, y: int = None):
+    def wait(self, seconds: float):
+        """Wait for specified seconds."""
+        time.sleep(seconds)
+    
+    def click(self, x: int = None, y: int = None, bbox: tuple = None):
         """Click at coordinates or current position."""
         if x is not None and y is not None:
+            # Trigger click highlight callback if available
+            if self.click_callback:
+                self.click_callback(x, y, bbox)
             pyautogui.click(x, y)
         else:
             pyautogui.click()
